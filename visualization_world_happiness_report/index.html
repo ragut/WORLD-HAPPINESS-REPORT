@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  background: #fcfcfa; min-width:1070px;
+}
+
+.background {
+  fill: none;
+  pointer-events: all;
+}
+
+.country {fill : #ddc;}
+
+#feature {
+  fill: #ccc;
+  cursor: pointer;
+}
+.depto-borde {
+  fill: none;
+  stroke: #fff;
+  stroke-linejoin: round;
+  stroke-width: .5;}
+
+#panel{
+	position:absolute; top:50px; left: 900px;
+}
+
+#buscador{ position:absolute; top:200px; left: 900px;}
+
+.stroke {
+  fill: none;
+  stroke: #000;
+  stroke-width: 3px;
+}
+
+.fill {
+  fill: #fff;
+}
+
+
+div.tooltip {	
+    position: absolute;			
+    text-align: center;						
+    padding: 2px;
+	width:150px;
+	font-weight: bold;	
+    font: 12px sans-serif;		
+    background: rgb(226, 218, 218);	
+    border: 0px;		
+    border-radius: 8px;					
+}
+
+svg {
+  font: 10px sans-serif;
+}
+
+.background path {
+  fill: none;
+  stroke: #ddd;
+  shape-rendering: crispEdges;
+}
+
+.foreground path {
+  fill: none;
+  stroke: steelblue;
+}
+
+.brush .extent {
+  fill-opacity: .3;
+  stroke: #fff;
+  shape-rendering: crispEdges;
+}
+
+.axis line,
+.axis path {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.axis text {
+  text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff;
+  cursor: move;
+}
+
+.eac-square input {
+  background-image: url("images/icon_search.png");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+ 
+  .axis pathB,
+  .axis lineB {
+    fill: none;
+    stroke: #000;
+  }
+ 
+  pathB.domain {
+    stroke: none;
+  }
+ 
+  .y .tick lineB {
+    stroke: #ddd;
+  }
+ 
+ .viewport {
+            position: absolute;
+            top: 300px;
+            left: 900px;
+            overflow-y: auto;
+            width: 280px;
+            height: 450px;
+            background-color: #e8e8e8;
+            border: 1px solid #AAAAAA;
+            border-radius: 4px;
+            box-shadow: inset 1px 1px 6px 2px rgba(0,0,0, .25);
+        }
+        .scroll-svg {
+			width: 250px;
+        }
+        .longscroll .row {
+            font-family: Arial;
+            font-size: 11px;
+            height: 19px;
+            padding: 0 8px;
+            border-bottom: solid #eee 1px;
+        }
+
+        .info-svg {
+            fill: #2968AA;
+            overflow: visible;
+        }
+
+        .brace {
+            stroke: #2968AA;
+            stroke-width: 2px;
+            fill: none;
+        }
+
+        .infotext {
+            font-size: 20px;
+        }
+</style>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://d3js.org/topojson.v1.min.js"></script>
+<script src="https://d3js.org/d3-queue.v3.min.js"></script>
+<script src="virtualscroller.js"></script>
+<script type='text/javascript' src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script  type='text/javascript' src="resources/jquery.easy-autocomplete.min.js"></script> 
+
+<!-- CSS file -->
+<link rel="stylesheet" href="resources/easy-autocomplete.min.css"> 
+<link rel="stylesheet" href="resources/easy-autocomplete.themes.min.css"> 
+
+<script>
+var margin = {top: 30, right: 10, bottom: 10, left: 10},
+ 	width = 850,
+    height = 500,
+	heightP = 200,
+	active = d3.select(null)
+	control = 50;
+
+var ordenamiento;
+
+var x = d3.scale.ordinal().rangePoints([0, width], 1),
+    y = {},
+    dragging = {};
+	
+var line = d3.svg.line(),
+    axis = d3.svg.axis().orient("left"),
+    background,
+    foreground;
+
+var projection = d3.geo.mercator()
+	.scale(120)
+	.translate([width / 2, height / 2])
+	.center([0,43]);
+
+var path = d3.geo.path()
+    .projection(projection);
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+
+	svg.append("rect")
+		.attr("class", "background")
+		.attr("width", width)
+		.attr("height", height)
+		.on("click", reset);
+	
+var g = svg.append("g")
+    .style("stroke-width", "1.5px");
+	
+var panel = d3.select("body").append("panel")
+    .attr("width", 300)
+    .attr("height", 300)
+	.attr("id","panel");
+	
+var buscador = d3.select("body").append("panel")	
+	.attr("width", 300)
+    .attr("height", 300)
+    .attr("id", "buscador");
+	
+
+var div = d3.select("body").append("div")	
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+var viewportTop = d3.select("body").append("div")	
+    .attr("class", "viewport");
+	
+var colorScale = d3.scale.category20();
+
+var scrollSVG = d3.select(".viewport").append("svg")
+	.attr("class", "scroll-svg");
+
+var defs = scrollSVG.insert("defs", ":first-child");
+
+var chartGroup = scrollSVG.append("g")
+	.attr("class", "chartGroup");
+  
+function ready (error, world, dataworld, dataladder){
+	if (error) throw error;
+	
+	var aux_index={"id":"a_0"};
+	var pais = "Colombia";
+	
+	ladderData = dataladder.map(function (d) {
+		return {
+			name: d.country,
+			id: d.id,
+			year: d.year,
+			score: d.Life_ladder
+		}
+    });
+//----------	COUNTRY		-----------//
+	countriesData = dataworld.map(function (d) {
+		return {
+			name: d.country,
+			id: d.id,
+			a_0: d.happiness_score,
+			a_1: d.GDP_per_capita,
+			a_2: d.social_support,
+			a_3: d.healthy_life_expectancy,
+			a_4: d.freedom_to_make_choices,
+			a_5: d.generosity,
+			a_6: d.perceptions_of_corruption,
+		}
+    });
+
+//-------------------------------------------	PARALLEL COORDINATES	--------------------------------------------// 
+	paralelas(dataworld);
+//--------------------------------------------------------------------------------------------------------------------------------//	  
+
+	IndexHappiness(aux_index, world, countriesData);
+	
+//-------------------------------------------	CHECK BOX	----------------------------------------------------------------------//
+panel.selectAll("input")
+		.data(["happiness_score", "GDP_per_capita", "social_support", "healthy_life_expectancy", "freedom_to_make_choices", "generosity", "perceptions_of_corruption"])
+		.enter()
+	.append('label')
+		.attr('for',function(d,i){ return 'index_'+i;})
+		.text(function(d) { return d; })
+	.append("input")			
+			.attr("type", "radio")
+			.attr("checked", function(d){ if(d=="happiness_score") return true})
+			.attr("name", "violencia")
+			.attr("id", function(d,i) { return 'a_'+i; })
+			.style('float', 'left')
+			.on("click", function (d) {				
+				ordenamiento = ordenar(this, countriesData, "a");				
+				aux_index = {"id":this.id};
+				if(this.id != "a_0"){	
+					d3.select("#parallel").remove();						
+					barchar(this, ordenamiento, pais);
+					escalafon(ordenamiento);
+				}else{
+					d3.select("#barras").remove();	
+					paralelas(dataworld);
+					escalafon(ordenamiento);
+				}				
+				IndexHappiness(this, world, countriesData)});	
+			
+	panel.selectAll("label")
+		.append("br");
+		
+//--------------------------------------------------------------------------------------------------------------------------------//	  
+
+buscador.append("label")
+			.attr("for", "forCountries")
+			.text("country")
+		.append("input")
+			.attr("type", "text")
+			.attr("id","square");
+			
+	buscador.append('button')
+			.attr("id", "btnCountries")
+			.text("search")
+			.on("click", function() {
+				  var countryName = document.getElementById("square").value;
+				  
+				  if(countryName!=""){
+				  
+						var aux = 0, control = true;
+						var valor = svg.selectAll("path");
+						var country_data = topojson.feature(world, world.objects.countries).features;
+						
+						while(aux < valor[0].length && control == true){
+							
+							if(countriesData[aux]["name"] == countryName){
+								
+								countryId = countriesData[aux]["id"];	
+								var aux_1 = 0;
+								while(aux_1 < valor[0].length){
+									
+									if(valor[0][aux_1].getAttribute('class') == "country_"+countryId){
+										clicked(valor[0][aux_1], country_data[aux_1], world);																		
+									}
+									aux_1++;
+								}
+								control = false;
+							}
+							aux++;					
+						}
+			  	}
+				if(aux_index.id == "a_0"){	
+					buscarParalelas(countryId);
+				}else{
+					pais = countryName; 
+					barchar(aux_index, ordenamiento, countryName);					
+				}
+			});
+			
+//-------------------------------------------	AUTOCOMPLETE	----------------------------------------------------------------------//
+		
+	var options = {
+		url: "datacountry.json",
+		getValue: "country",
+		list: {
+			match: {
+				enabled: true
+			},
+			maxNumberOfElements: 8
+		},
+		theme: "square"
+	};
+	$("#square").easyAutocomplete(options);	
+
+//-------------------------------------------	ORDENAR	----------------------------------------------------------------------//
+	
+	ordenamiento =  ordenar(aux_index, countriesData, "a");
+	
+//-------------------------------------------	ESCALAFON	----------------------------------------------------------------------//
+	escalafon(ordenamiento);
+};
+
+function escalafon(countriesData){
+        createFilters(defs);		
+            
+        chartGroup.append("rect")
+            .attr("fill", "#FFFFFF");
+
+        var rowEnter = function(rowSelection) {
+            rowSelection.append("rect")
+                .attr("rx", 3)
+                .attr("ry", 3)
+                .attr("width", "250")
+                .attr("height", "24")
+                .attr("fill-opacity", 0.25)
+                .attr("stroke", "#999999")
+                .attr("stroke-width", "2px");
+            rowSelection.append("text")
+                .attr("transform", "translate(10,15)");
+        };
+		
+		//dataMap = color(aux_index.id, countriesData);
+		
+        var rowUpdate = function(rowSelection) {
+            rowSelection.select("rect")
+                .attr("fill", function(d) { 
+			if(dataMap[d.id] != null)				
+				return dataMap[d.id]['fillColor'];
+			else
+				return '#000';
+		});
+            rowSelection.select("text")
+                .text(function (d) {
+                    return (d.index + 1) + ". " + d.name;
+                });
+        };
+
+        var rowExit = function(rowSelection) {
+        };
+
+        var virtualScroller = d3.VirtualScroller()
+            .rowHeight(30)
+            .enter(rowEnter)
+            .update(rowUpdate)
+            .exit(rowExit)
+            .svg(scrollSVG)
+            .totalRows(157)
+            .viewport(d3.select(".viewport"));
+
+		
+		countriesData.forEach(function(nextCountry, i) {
+			nextCountry.index = i;
+		});	
+
+    virtualScroller.data(countriesData, function(d) { return d.name; });
+	chartGroup.call(virtualScroller);       
+}
+
+ function createFilters(svgDefs) {
+	var filter = svgDefs.append("svg:filter")
+		.attr("id", "dropShadow1")
+		.attr("x", "0")
+		.attr("y", "0")
+		.attr("width", "200%")
+		.attr("height", "200%");
+
+	filter.append("svg:feOffset")
+		.attr("result", "offOut")
+		.attr("in", "SourceAlpha")
+		.attr("dx", "1")
+		.attr("dy", "1");
+
+	filter.append("svg:feColorMatrix")
+		.attr("result", "matrixOut")
+		.attr("in", "offOut")
+		.attr("type", "matrix")
+		.attr("values", "0.1 0 0 0 0 0 0.1 0 0 0 0 0 0.1 0 0 0 0 0 0.2 0");
+
+	filter.append("svg:feGaussianBlur")
+		.attr("result", "blurOut")
+		.attr("in", "matrixOut")
+		.attr("stdDeviation", "1");
+
+	filter.append("svg:feBlend")
+		.attr("in", "SourceGraphic")
+		.attr("in2", "blurOut")
+		.attr("mode", "normal");
+}
+
+function makeCurlyBrace(x1,y1,x2,y2,w,q)
+{
+	//Calculate unit vector
+	var dx = x1-x2;
+	var dy = y1-y2;
+	var len = Math.sqrt(dx*dx + dy*dy);
+	dx = dx / len;
+	dy = dy / len;
+
+	//Calculate Control Points of path,
+	var qx1 = x1 + q*w*dy;
+	var qy1 = y1 - q*w*dx;
+	var qx2 = (x1 - .25*len*dx) + (1-q)*w*dy;
+	var qy2 = (y1 - .25*len*dy) - (1-q)*w*dx;
+	var tx1 = (x1 -  .5*len*dx) + w*dy;
+	var ty1 = (y1 -  .5*len*dy) - w*dx;
+	var qx3 = x2 + q*w*dy;
+	var qy3 = y2 - q*w*dx;
+	var qx4 = (x1 - .75*len*dx) + (1-q)*w*dy;
+	var qy4 = (y1 - .75*len*dy) - (1-q)*w*dx;
+
+	return ( "M " +  x1 + " " +  y1 +
+		" Q " + qx1 + " " + qy1 + " " + qx2 + " " + qy2 +
+		" T " + tx1 + " " + ty1 +
+		" M " +  x2 + " " +  y2 +
+		" Q " + qx3 + " " + qy3 + " " + qx4 + " " + qy4 +
+		" T " + tx1 + " " + ty1 );
+}
+
+function barchar(index_score, countriesData, nameCountry){
+	d3.select("#barras").remove();	
+	var barras = d3.select("body").append("svg")
+			.attr("width", width + margin.left + margin.right)
+			.attr("height", heightP + margin.top + 50 + margin.bottom)
+			.attr("id", "barras")
+			.append("g")
+				.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+				
+	var dataset = d3.layout.stack()([index_score.id].map(function(dep) {
+	  return countriesData.map(function(d) {				
+			return {x: d.name, y: +d[dep]};		
+	  });
+	}));
+	
+	var tam = dataset[0].length;
+	var pos = 0, control = true;
+	
+	barras.selectAll("rect").remove();
+	barras.selectAll("g").remove();
+
+	while(pos < tam && control == true){
+		if(dataset[0][pos]["x"] == nameCountry){
+			control = false;
+		}
+		pos++;
+	}
+
+	var dataset_1 = [dataset[0][0], dataset[0][1], dataset[0][pos-2], dataset[0][pos-1], dataset[0][pos], dataset[0][tam-2], dataset[0][tam-1]];
+
+	// Set x, y and colors
+	var xx = d3.scale.ordinal()
+	  .domain(dataset_1.map(function(d) { return d.x;}))
+	  .rangeRoundBands([10, width-10], 0.02);
+
+	var yy = d3.scale.linear()
+	  .domain([0, d3.max(dataset_1, function(d) { return d.y0 + d.y; })])
+	  .range([heightP, 0]);
+
+	var colors = ["b33040",  "#d25c4d", "#f2b447"];	
+
+	// Define and draw axes
+	var yAxis = d3.svg.axis()
+	  .scale(yy)
+	  .orient("left")
+	  .ticks(5)
+	  .tickSize(-width, 0, 0)
+	  .tickFormat( function(d) { return d } );
+
+	var xAxis = d3.svg.axis()
+	  .scale(xx)
+	  .orient("bottom");
+
+	barras.append("g")
+	  .attr("class", "y axis")
+	  .call(yAxis);
+
+	barras.append("g")
+	  .attr("class", "x axis")
+	  .attr("transform", "translate(0," + heightP + ")")
+	  .call(xAxis);
+
+	  // Create groups for each series, rects for each segment 
+
+var rect = barras.selectAll("rect")
+  .data(dataset_1)
+  .enter()
+  .append("rect")
+  .attr("x", function(d) { return xx(d.x); })
+  .attr("y", function(d) { return yy(d.y0 + d.y); })
+  .attr("height", function(d) { return yy(d.y0) - yy(d.y0 + d.y); })
+  .attr("width", xx.rangeBand())
+  .style("fill", function(d, i) { 
+		if(d.x == dataset[0][pos-2]["x"] || d.x == dataset[0][pos-1]["x"] || d.x ==  dataset[0][pos]["x"]){	
+			return colors[0]; 
+		}else{
+			return colors[1];
+		}		
+	})
+  .on("mouseover", function() { tooltipB.style("display", null); })
+  .on("mouseout", function() { tooltipB.style("display", "none"); })
+  .on("mousemove", function(d) {
+    var xPosition = d3.mouse(this)[0] - 15;
+    var yPosition = d3.mouse(this)[1] - 25;
+    tooltipB.attr("transform", "translate(" + xPosition + "," + yPosition + ")");
+    tooltipB.select("text").text(d.y);
+  });
+
+	// Draw legend
+	var legend = barras.selectAll(".legend")
+	  .data(colors)
+	  .enter().append("g")
+	  .attr("class", "legend")
+	  .attr("transform", function(d, i) { return "translate(30," + i * 19 + ")"; });
+	 
+	legend.append("rect")
+	  .attr("x", width - 18)
+	  .attr("width", 18)
+	  .attr("height", 18)
+	  .style("fill", function(d, i) {return colors.slice().reverse()[i];});
+	 
+	legend.append("text")
+	  .attr("x", width + 5)
+	  .attr("y", 9)
+	  .attr("dy", ".35em")
+	  .style("text-anchor", "start");
+
+
+	// Prep the tooltip bits, initial display is hidden
+	var tooltipB = barras.append("g")
+	  .attr("class", "tooltip")
+	  .style("display", "none");
+		
+	tooltipB.append("rect")
+	  .attr("width", 30)
+	  .attr("height", 20)
+	  .attr("fill", "white")
+	  .style("opacity", 0.5);
+
+	tooltipB.append("text")
+	  .attr("x", 15)
+	  .attr("dy", "1.2em")
+	  .style("text-anchor", "middle")
+	  .attr("font-size", "12px")
+	  .attr("font-weight", "bold");	 
+}
+
+function paralelas(dataworld){
+	var parallel = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", heightP + margin.top + margin.bottom)
+    .attr("id", "parallel")
+	.append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+	 x.domain(dimensions = d3.keys(dataworld[0]).filter(function(d) {
+    return d != "country"  && d != "id" && (y[d] = d3.scale.linear()
+        .domain(d3.extent(dataworld, function(p) { return +p[d]; }))
+		.range([heightP, 0]));
+		}));
+
+  // Agregar líneas de fondo gris para el contexto.
+  background = parallel.append("g")
+      .attr("class", "background")
+    .selectAll("path")
+      .data(dataworld)
+    .enter().append("path")
+      .attr("d", path_P);
+
+  // Añada las líneas azules del primero plano para el foco.
+  foreground = parallel.append("g")
+      .attr("class", "foreground")
+    .selectAll("path")
+      .data(dataworld)
+    .enter().append("path")
+      .attr("d", path_P)
+	  .attr("id", function(d){ return "id_"+d.id; });
+
+  // Agregue un elemento de grupo para cada dimensión.
+  var gP = parallel.selectAll(".dimension")
+      .data(dimensions)
+    .enter().append("g")
+      .attr("class", "dimension")
+      .attr("transform", function(d) { return "translate(" + x(d) + ")"; })
+      .call(d3.behavior.drag()
+        .origin(function(d) { return {x: x(d)}; })
+        .on("dragstart", function(d) {
+          dragging[d] = x(d);
+          background.attr("visibility", "hidden");
+        })
+        .on("drag", function(d) {
+          dragging[d] = Math.min(width, Math.max(0, d3.event.x));
+          foreground.attr("d", path_P);
+          dimensions.sort(function(a, b) { return positionP(a) - positionP(b); });
+          x.domain(dimensions);
+          gP.attr("transform", function(d) { return "translate(" + positionP(d) + ")"; })
+        })
+        .on("dragend", function(d) {
+          delete dragging[d];
+          transitionP(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+          transitionP(foreground).attr("d", path_P);
+          background
+              .attr("d", path_P)
+            .transition()
+              .delay(500)
+              .duration(0)
+              .attr("visibility", null);
+        }));
+
+  // Añada un eje y un título.
+  gP.append("g")
+      .attr("class", "axis")
+      .each(function(d) { d3.select(this).call(axis.scale(y[d])); })
+    .append("text")
+      .style("text-anchor", "middle")
+      .attr("y", -9)
+      .text(function(d) { return d; });
+
+  // Agregue y guarde un brocha para cada eje.
+  gP.append("g")
+      .attr("class", "brush")
+      .each(function(d) {
+        d3.select(this).call(y[d].brush = d3.svg.brush().y(y[d]).on("brushstart", brushstart).on("brush", brush));
+      })
+    .selectAll("rect")
+      .attr("x", -8)
+      .attr("width", 16);
+	  
+}
+
+function ordenar(index_score, countriesData, tipo_ordenado){
+	var values = [];
+	switch (index_score.id) {
+		case "a_0":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_0 < b.a_0) {
+					return 1;
+				  }
+				  if (a.a_0 > b.a_0) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_0 > b.a_0) {
+					return 1;
+				  }
+				  if (a.a_0 < b.a_0) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_1":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_1 < b.a_1) {
+					return 1;
+				  }
+				  if (a.a_1 > b.a_1) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_1 > b.a_1) {
+					return 1;
+				  }
+				  if (a.a_1 < b.a_1) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_2":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_2 < b.a_2) {
+					return 1;
+				  }
+				  if (a.a_2 > b.a_2) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_2 > b.a_2) {
+					return 1;
+				  }
+				  if (a.a_2 < b.a_2) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_3":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_3 < b.a_3) {
+					return 1;
+				  }
+				  if (a.a_3 > b.a_3) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_3 > b.a_3) {
+					return 1;
+				  }
+				  if (a.a_3 < b.a_3) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_4":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_4 < b.a_4) {
+					return 1;
+				  }
+				  if (a.a_4 > b.a_4) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_4 > b.a_4) {
+					return 1;
+				  }
+				  if (a.a_4 < b.a_4) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_5":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_5 < b.a_5) {
+					return 1;
+				  }
+				  if (a.a_5 > b.a_5) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_5 > b.a_5) {
+					return 1;
+				  }
+				  if (a.a_5 < b.a_5) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+		case "a_6":
+			if(tipo_ordenado == "a"){
+				countriesData.sort(function (a, b) {
+				  if (a.a_6 < b.a_6) {
+					return 1;
+				  }
+				  if (a.a_6 > b.a_6) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}else{
+				countriesData.sort(function (a, b) {
+				  if (a.a_6 > b.a_6) {
+					return 1;
+				  }
+				  if (a.a_6 < b.a_6) {
+					return -1;
+				  }
+				  // a must be equal to b
+				  return 0;
+				});
+			}
+		break;
+	}
+	
+	return countriesData;
+}	
+	
+function IndexHappiness(aux_index, world, countriesData){
+
+	var countries = topojson.feature(world, world.objects.countries).features;
+	
+	g.selectAll("path").remove();
+	reset();
+	dataMap = color(aux_index.id, countriesData);
+	
+	g.selectAll(".country")
+		.data(countries)
+        .enter().append("path")
+		.attr("class", function(d) { return "country" + "_" + d.id; })
+        .attr("id", "feature")
+        .attr("d", path)
+		.style("fill", function(d) { 
+			if(dataMap[d.id] != null)				
+				return dataMap[d.id]['fillColor'];
+			else
+				return '#000';
+		})
+		.on("click", function (d) {clicked(this, d, world)})
+		.on("mouseover", function(d) {
+			if(dataMap[d.id]){
+					if(aux_index.id == "a_0"){					
+						buscarParalelas(d.id);						
+					}else{
+						barchar(aux_index, ordenamiento, dataMap[d.id].dataName);
+					}
+					div.transition()		
+						.duration(200)		
+						.style("opacity", .9);
+			}
+		})
+		.on("mousemove", function(d){
+			if(dataMap[d.id]){
+				div.html("Country: <b>"+ dataMap[d.id]['dataName']+"</b><br/>")
+					.style("height", control-20+"px")
+					.style("left", (d3.event.pageX) + "px")		
+					.style("top", (d3.event.pageY - control) + "px");
+			}
+		})					
+        .on("mouseout", function(d) {		
+            div.transition()		
+                .duration(1000)		
+                .style("opacity", 0);
+				
+			div.transition()
+				.delay(1000)
+				.style("left", "0px")
+				.style("top", "0px");
+				
+			//resetParalelas();
+        });
+
+	g.append("path")
+		.datum(topojson.mesh(world, world.objects.countries, function(a, b) { return a !== b; }))
+		.attr("d", path)
+		.attr("class", "depto-borde");
+}
+
+function color(index_score, countriesData){
+	var values = [];
+	switch (index_score) {
+		case "a_0":
+			values = countriesData.map(function(d){ return parseFloat(d.a_0);});
+		break;
+		case "a_1":
+			values = countriesData.map(function(d){ return parseFloat(d.a_1);});
+		break;
+		case "a_2":
+			values = countriesData.map(function(d){ return parseFloat(d.a_2);});
+		break;
+		case "a_3":
+			values = countriesData.map(function(d){ return parseFloat(d.a_3);});
+		break;
+		case "a_4":
+			values = countriesData.map(function(d){ return parseFloat(d.a_4);});
+		break;
+		case "a_5":
+			values = countriesData.map(function(d){ return parseFloat(d.a_5);});
+		break;
+		case "a_6":
+			values = countriesData.map(function(d){ return parseFloat(d.a_6);});
+		break;
+	}	
+	
+    var minValue = Math.min.apply(null, values),
+        maxValue = Math.max.apply(null, values);
+
+	
+//----	PALETA DE COLORES	----//
+    var EscalaColor = d3.scale.linear()
+            .domain([minValue,maxValue])
+            .range(["#EFEFFF","#02386F"]);
+			
+	var dataset = [];
+	var	i=0;	
+
+//------	DATOS MAPA		------//
+	countriesData.forEach(function(d){ 
+		dataset[d.id] = {
+			dataName: d.name,
+			fillColor: EscalaColor(values[i])
+		};	
+		i++;
+	});	
+	return dataset;
+}
+
+function clicked(obj, d, co){  
+	reset();  
+	
+    active.classed("active", false);
+    active = d3.select(obj).classed("active", true);
+	
+    var bounds = path.bounds(d),
+      dx = bounds[1][0] - bounds[0][0],
+      dy = bounds[1][1] - bounds[0][1],
+      x = (bounds[0][0] + bounds[1][0]) / 2,
+      y = (bounds[0][1] + bounds[1][1]) / 2,
+      scale = .9 / Math.max(dx / width, dy / height),
+      translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+    g.transition()
+      .duration(750)
+      .style("stroke-width", 1.5 / scale + "px")
+      .attr("transform", "translate(" + translate + ")scale(" + scale + ")");
+}
+
+function reset() {
+    active.classed("active", false);
+    active = d3.select(null);
+        
+    g.transition()
+      .duration(750)
+      .style("stroke-width", "1.5px")
+      .attr("transform", "");
+}
+
+//-------------------------------		PARALLEL COORDENATES	------------------------------------------------------//		
+
+function positionP(d) {
+  var v = dragging[d];
+  return v == null ? x(d) : v;
+}
+
+function transitionP(g) {
+  return g.transition().duration(500);
+}
+
+// Devuelve la ruta de un punto de datos dado.
+function path_P(d) {
+  return line(dimensions.map(function(p) { return [positionP(p), y[p](d[p])]; }));
+}
+
+function brushstart() {
+  d3.event.sourceEvent.stopPropagation();
+}
+
+// Maneja un evento de pincel, alternando la visualización de líneas de primer plano.
+function brush() {
+  var actives = dimensions.filter(function(p) { return !y[p].brush.empty(); }),
+      extents = actives.map(function(p) { return y[p].brush.extent(); });
+  foreground.style("display", function(d) {
+    return actives.every(function(p, i) {
+      return extents[i][0] <= d[p] && d[p] <= extents[i][1];
+    }) ? null : "none";
+  });
+}
+//----------------------------------------------------------------------------------------------------------------------------//
+
+function buscarParalelas(id) {
+	prueba = foreground.selectAll("id");
+	
+	for(i = 0; i< prueba.length; i++){
+		
+		if(prueba[i].parentNode.id != "id_"+id){
+			document.getElementById(prueba[i].parentNode.id).style.display ="none";
+		}else{
+			document.getElementById(prueba[i].parentNode.id).style.display = null;
+		}
+	}
+}
+
+function resetParalelas() {
+	prueba = foreground.selectAll("id");
+	
+	for(i = 0; i< prueba.length; i++){
+		document.getElementById(prueba[i].parentNode.id).style.display = null;
+	}
+}
+
+d3.queue()
+    .defer(d3.json, "country.json")
+    .defer(d3.json, "datacountry.json")
+	.defer(d3.json, "dataladder.json")
+	.await(ready);
+
+</script>
